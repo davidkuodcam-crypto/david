@@ -44,6 +44,13 @@
                 </div>
 
                 <div class="flex items-center gap-4">
+                    <!-- Settings Button -->
+                    <button onclick="toggleSettings(true)" class="relative p-2 text-gray-600 hover:bg-gray-100 rounded-full transition-colors" title="AI 設定">
+                        <i data-lucide="settings" class="w-6 h-6"></i>
+                        <!-- Status Light Indicator -->
+                        <span id="api-status-dot" class="absolute top-1 right-1 w-2.5 h-2.5 bg-gray-400 rounded-full border-2 border-white transition-colors duration-300"></span>
+                    </button>
+                    
                     <button onclick="toggleCart(true)" class="relative p-2 text-gray-600 hover:bg-gray-100 rounded-full transition-colors">
                         <i data-lucide="shopping-cart" class="w-6 h-6"></i>
                         <span id="cart-count-badge" class="hidden absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full">0</span>
@@ -121,7 +128,7 @@
     </footer>
 
     <!-- Cart Drawer -->
-    <div id="cart-drawer-overlay" class="hidden fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm transition-opacity duration-300"></div>
+    <div id="cart-drawer-overlay" class="hidden fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm transition-opacity duration-300" onclick="toggleCart(false)"></div>
     <div id="cart-drawer" class="fixed right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl z-[70] transition-transform duration-300 translate-x-full">
         <div class="flex flex-col h-full">
             <div class="flex items-center justify-between p-6 border-b">
@@ -145,6 +152,43 @@
         </div>
     </div>
 
+    <!-- Settings Modal -->
+    <div id="settings-overlay" class="hidden fixed inset-0 z-[80] bg-black/50 backdrop-blur-sm transition-opacity flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-all">
+            <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-slate-50">
+                <div class="flex items-center gap-3">
+                    <div class="p-2 bg-blue-100 text-blue-600 rounded-lg">
+                        <i data-lucide="bot" class="w-6 h-6"></i>
+                    </div>
+                    <h2 class="text-xl font-black text-gray-900">AI 助理設定</h2>
+                </div>
+                <button onclick="toggleSettings(false)" class="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-500">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="p-8">
+                <div class="mb-6">
+                    <label class="block text-sm font-bold text-gray-700 mb-2">Gemini API Key</label>
+                    <p class="text-xs text-gray-500 mb-3">請輸入您的 Google Gemini API 金鑰以啟用 Gemini 2.5 Flash 智慧功能。</p>
+                    <input type="password" id="gemini-api-key-input" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 focus:bg-white focus:border-blue-500 rounded-xl outline-none transition-all font-mono text-sm" placeholder="AIzaSy..." />
+                </div>
+                
+                <div class="flex items-center justify-between mb-8">
+                    <div class="flex items-center gap-2">
+                        <div class="text-sm font-medium text-gray-600">連線狀態：</div>
+                        <div id="settings-status-text" class="text-sm font-bold text-gray-400">尚未設定</div>
+                    </div>
+                    <div id="settings-status-indicator" class="w-3 h-3 rounded-full bg-gray-300"></div>
+                </div>
+
+                <button id="test-api-btn" onclick="testAndSaveGeminiAPI()" class="w-full py-4 bg-gray-900 text-white font-bold rounded-xl hover:bg-blue-600 transition-all flex justify-center items-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed">
+                    <i data-lucide="zap" class="w-5 h-5"></i>
+                    測試連線並儲存
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Data
         const PRODUCTS = [
@@ -158,6 +202,7 @@
 
         let cart = [];
         let currentView = 'home';
+        let geminiApiKey = ''; // 儲存 API Key 的變數
 
         // Initialize
         window.onload = () => {
@@ -213,12 +258,100 @@
             }
         }
 
+        function toggleSettings(isOpen) {
+            const overlay = document.getElementById('settings-overlay');
+            if (isOpen) {
+                overlay.classList.remove('hidden');
+            } else {
+                overlay.classList.add('hidden');
+            }
+        }
+
         function showNotification(msg) {
             const toast = document.getElementById('notification');
             const msgEl = document.getElementById('notification-msg');
             msgEl.innerText = msg;
             toast.classList.remove('hidden');
+            
+            // Re-trigger animation
+            toast.style.animation = 'none';
+            toast.offsetHeight; /* trigger reflow */
+            toast.style.animation = null; 
+
             setTimeout(() => toast.classList.add('hidden'), 3000);
+        }
+
+        // Gemini API Logic
+        async function testAndSaveGeminiAPI() {
+            const inputField = document.getElementById('gemini-api-key-input');
+            const apiKey = inputField.value.trim();
+            const statusText = document.getElementById('settings-status-text');
+            const statusIndicator = document.getElementById('settings-status-indicator');
+            const navDot = document.getElementById('api-status-dot');
+            const testBtn = document.getElementById('test-api-btn');
+
+            if (!apiKey) {
+                showNotification('請先輸入 API Key');
+                return;
+            }
+
+            // 更新 UI 狀態為「測試中」 (黃燈)
+            testBtn.disabled = true;
+            testBtn.innerHTML = '<i data-lucide="loader" class="w-5 h-5 animate-spin"></i> 測試中...';
+            lucide.createIcons();
+            
+            statusText.innerText = '連線測試中...';
+            statusText.className = 'text-sm font-bold text-yellow-600';
+            statusIndicator.className = 'w-3 h-3 rounded-full bg-yellow-400 animate-pulse';
+            navDot.className = 'absolute top-1 right-1 w-2.5 h-2.5 bg-yellow-400 rounded-full border-2 border-white animate-pulse';
+
+            try {
+                // 發送一個簡單的請求來測試連線 (使用 Gemini 2.5 Flash 模型)
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: "Hello, this is a connection test." }] }]
+                    })
+                });
+
+                if (response.ok) {
+                    // 連線成功 (綠燈)
+                    geminiApiKey = apiKey;
+                    statusText.innerText = '連線成功！';
+                    statusText.className = 'text-sm font-bold text-green-600';
+                    statusIndicator.className = 'w-3 h-3 rounded-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]';
+                    navDot.className = 'absolute top-1 right-1 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white';
+                    
+                    showNotification('Gemini API 連線成功！');
+                    
+                    // 1.5 秒後自動關閉設定視窗
+                    setTimeout(() => toggleSettings(false), 1500);
+                } else {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error?.message || 'API 回應錯誤');
+                }
+            } catch (error) {
+                // 連線失敗 (紅燈)
+                console.error("Gemini API Error:", error);
+                
+                // 判斷是否為無效金鑰
+                let errorMsg = '連線失敗，請檢查金鑰。';
+                if (error.message.includes('API key not valid')) {
+                    errorMsg = '無效的金鑰，請重新確認。';
+                } else if (error.message !== 'Failed to fetch' && error.message !== 'API 回應錯誤') {
+                    errorMsg = '失敗: ' + error.message;
+                }
+
+                statusText.innerText = errorMsg;
+                statusText.className = 'text-sm font-bold text-red-600';
+                statusIndicator.className = 'w-3 h-3 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]';
+                navDot.className = 'absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white';
+            } finally {
+                testBtn.disabled = false;
+                testBtn.innerHTML = '<i data-lucide="zap" class="w-5 h-5"></i> 測試連線並儲存';
+                lucide.createIcons();
+            }
         }
 
         // Cart Logic
